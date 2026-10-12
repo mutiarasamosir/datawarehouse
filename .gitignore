@@ -1,0 +1,29 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Environment variables dan secret
+.env
+.env.*
+
+# VS Code
+.vscode/
+
+# Cache dan hasil sementara
+.pytest_cache/
+*.log
+
+# Model hasil training (opsional)
+# *.pth
+# *.pt
+# *.keras

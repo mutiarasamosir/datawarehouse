@@ -1,14 +1,14 @@
 from pathlib import Path
-BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Lokasi seluruh database DuckDB
-DATA_DIR = BASE_DIR / "warehouses"
+ROOT = Path(__file__).resolve().parents[1]
+
+DATABASE_DIR = ROOT / "databases"
 
 DATABASES = {
-    "inflasi": DATA_DIR / "inflasi.duckdb",
-    "ekonomi": DATA_DIR / "ekonomi.duckdb",
-    "sosial": DATA_DIR / "sosial.duckdb",
-    "pangan": DATA_DIR / "pangan.duckdb",
-    "energi": DATA_DIR / "energi.duckdb",
-    "bencana": DATA_DIR / "bencana.duckdb",
+    "inflasi": DATABASE_DIR / "inflasi.duckdb",
+    "pangan": DATABASE_DIR / "pangan.duckdb",
+    "energi": DATABASE_DIR / "inflasi_energi.duckdb",
+    "ekonomi": DATABASE_DIR / "ekonomi.duckdb",
+    "sosial": DATABASE_DIR / "sosial.duckdb",
+    "bencana": DATABASE_DIR / "bencana.duckdb",
 }

@@ -1,5 +1,9 @@
 -- Analisis indikator ekonomi per provinsi dan periode
 
+
+-- Analisis indikator ekonomi per provinsi dan periode
+-- UMP tahunan digabungkan berdasarkan provinsi
+
 SELECT
     dp.nama_provinsi,
     dper.tahun,
@@ -17,7 +21,6 @@ LEFT JOIN ekonomi.main.fact_tpak AS tpak
     AND tpt.periode_id = tpak.periode_id
 LEFT JOIN ekonomi.main.fact_ump AS ump
     ON tpt.provinsi_id = ump.provinsi_id
-    AND tpt.periode_id = ump.periode_id
 ORDER BY
     dp.nama_provinsi,
     dper.tahun,

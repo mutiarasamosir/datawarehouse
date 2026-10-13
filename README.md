@@ -59,7 +59,8 @@ data-warehouse-project/
 │   ├── 07_kpi_harga_pangan.sql
 │   ├── 08_cek_kualitas_harga.sql
 │   ├── 09_analisis_ekonomi.sql
-│   └── 10_analisis_sosial.sql
+│   ├── 10_analisis_sosial.sql
+│   └── 11_integrasi_semua_faktor.sql
 │
 ├── dashboard/
 │   ├── app.py

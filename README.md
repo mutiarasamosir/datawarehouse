@@ -14,13 +14,25 @@ data-warehouse-project/
 │   │   ├── load.py
 │   │   └── build.py
 │   ├── pangan/
+│   │   ├── cek_data_pangan.sql
+│   │   ├── load.py
+│   │   └── build.py
+│   ├── inflasi_energi/
 │   │   ├── schema.sql
 │   │   ├── load.py
 │   │   └── build.py
-│   ├── energi/
 │   ├── ekonomi/
+│   │   ├── schema.sql
+│   │   ├── load.py
+│   │   └── build.py
 │   ├── sosial/
+│   │   ├── schema.sql
+│   │   ├── load.py
+│   │   └── build.py
 │   └── bencana/
+│       ├── schema.sql
+│       ├── load.py
+│       └── build.py
 │
 ├── databases/
 │   ├── inflasi.duckdb
@@ -54,9 +66,7 @@ data-warehouse-project/
 │   ├── pages/
 │   └── components/
 │
-├── tests/
-├── scripts/
-│   └── build_all.py
+├── tests_queries.py
 ├── requirements.txt
 ├── .gitignore
 └── README.md

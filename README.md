@@ -24,6 +24,7 @@ data-warehouse-project/
 │
 ├── databases/
 │   ├── inflasi.duckdb
+│   ├── inflasi_energi.duckdb
 │   ├── pangan.duckdb
 │   ├── energi.duckdb
 │   ├── ekonomi.duckdb
@@ -37,12 +38,16 @@ data-warehouse-project/
 │   └── data_access.py
 │
 ├── queries/
-│   ├── inflasi.sql
-│   ├── pangan.sql
-│   ├── energi.sql
-│   ├── ekonomi.sql
-│   ├── sosial.sql
-│   └── bencana.sql
+│   ├── 01_inflasi_bulanan.sql
+│   ├── 02_harga_pangan_provinsi.sql
+│   ├── 03_inflasi_vs_harga_pangan.sql
+│   ├── 04_inflasi_energi.sql
+│   ├── 05_inflasi_bencana.sql
+│   ├── 06_kpi_inflasi.sql
+│   ├── 07_kpi_harga_pangan.sql
+│   ├── 08_cek_kualitas_harga.sql
+│   ├── 09_analisis_ekonomi.sql
+│   └── 10_analisis_sosial.sql
 │
 ├── dashboard/
 │   ├── app.py

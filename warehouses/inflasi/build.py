@@ -1,42 +1,55 @@
-import os
+
+from pathlib import Path
+import sys
+
 import duckdb
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 from load import process_and_load_inflasi
 
-def main():
-    # Tentukan path database output di folder databases/
-    db_dir = "../../databases"
-    os.makedirs(db_dir, exist_ok=True)
-    db_path = os.path.join(db_dir, "inflasi.duckdb")
-    
-    schema_path = "schema.sql"
-    
-    print(f"🚀 Membangun database DuckDB di: {db_path}")
-    con = duckdb.connect(db_path)
-    
-    # 1. Jalankan schema.sql untuk membuat tabel kosong
-    if os.path.exists(schema_path):
-        with open(schema_path, 'r', encoding='utf-8') as f:
-            schema_sql = f.read()
-        con.execute(schema_sql)
-        print("✅ Skema tabel berhasil dibuat.")
-    else:
-        print(f"❌ File {schema_path} tidak ditemukan di direktori ini!")
-        return
 
-    # 2. Tentukan lokasi file data mentah BPS di folder data/
-    # Sesuaikan nama file dengan file Excel inflasi yang Anda miliki di folder data/
-    data_file = "../../data/inflasi_energi/inflasi_energi.xlsx" # atau path file Anda
-    
-    # 3. Jalankan fungsi load data
-    process_and_load_inflasi(con, data_file)
-    
-    # 4. Testing hasil query singkat
-    print("\n--- Hasil Uji Coba Query (Preview dim_waktu) ---")
-    df_test = con.execute("SELECT * FROM dim_waktu LIMIT 5").df()
-    print(df_test)
-    
-    con.close()
-    print("\n🎉 Proses Build Warehouse Inflasi Sempurna!")
+def main():
+    db_path = ROOT / "databases" / "inflasi.duckdb"
+    schema_path = ROOT / "warehouses" / "inflasi" / "schema.sql"
+    data_file = (
+        ROOT
+        / "data"
+        / "inflasi"
+        / "Inflasi Tahunan (Y-on-Y) 38 Provinsi (2022=100), 2025 (1).xlsx"
+    )
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Gunakan transaksi agar perubahan bisa dibatalkan jika gagal.
+    con = duckdb.connect(str(db_path))
+
+    try:
+        con.execute("BEGIN TRANSACTION")
+
+        con.execute(schema_path.read_text(encoding="utf-8"))
+
+        # Muat data setelah tabel tersedia.
+        process_and_load_inflasi(con, data_file)
+
+        # Validasi hasil sebelum commit.
+        for tabel in ("dim_wilayah", "dim_waktu", "fact_inflasi"):
+            jumlah = con.execute(
+                f"SELECT COUNT(*) FROM {tabel}"
+            ).fetchone()[0]
+            print(f"{tabel}: {jumlah} baris")
+
+        con.execute("COMMIT")
+        print(f"\nWarehouse inflasi berhasil dibangun: {db_path}")
+
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+
+    finally:
+        con.close()
+
 
 if __name__ == "__main__":
     main()

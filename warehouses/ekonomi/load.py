@@ -6,75 +6,217 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data" / "ekonomi"
+TAHUN = 2025
+
+BULAN_PERIODE = {
+    "Februari": 2,
+    "Mei": 5,
+    "Agustus": 8,
+    "November": 11,
+}
 
 
-def safe_name(value):
-    name = str(value).strip().lower()
-    name = re.sub(r"[^a-zA-Z0-9_]", "_", name)
-    name = re.sub(r"_+", "_", name).strip("_")
-    if not name:
-        name = "kolom"
-    if name[0].isdigit():
-        name = "col_" + name
-    return name
+def clean_number(value):
+    """Nilai numerik kosong atau tanda '-' menjadi 0."""
+    if pd.isna(value) or str(value).strip() in {"", "-"}:
+        return 0.0
+
+    if isinstance(value, str):
+        value = value.strip().replace(",", "")
+
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return 0.0
 
 
-def clean_columns(columns):
-    result = []
-    used = set()
 
-    for column in columns:
-        base = safe_name(column)
-        name = base
-        suffix = 2
+def clean_province(value):
+    """Menstandarkan nama provinsi dari seluruh sumber ekonomi."""
+    name = str(value).strip().upper()
 
-        while name in used:
-            name = f"{base}_{suffix}"
-            suffix += 1
+    if name in {"INDONESIA", "", "NAN"}:
+        return None
 
-        result.append(name)
-        used.add(name)
+    # Hilangkan kode angka di depan nama provinsi, misalnya "11 ACEH".
+    name = re.sub(r"^\d+\s+", "", name)
 
-    return result
+    # Samakan variasi nama dari file sumber.
+    aliases = {
+        "KEP. BANGKA BELITUNG": "KEPULAUAN BANGKA BELITUNG",
+        "KEP. RIAU": "KEPULAUAN RIAU",
+        "DI YOGYAKARTA": "DI YOGYAKARTA",
+    }
+
+    return aliases.get(name, name)
+
+
+def add_period(con, periode):
+    con.execute("""
+        INSERT INTO dim_periode (periode_id, tahun, periode)
+        VALUES (
+            (SELECT COALESCE(MAX(periode_id), 0) + 1
+             FROM dim_periode),
+            ?, ?
+        )
+        ON CONFLICT (tahun, periode) DO NOTHING
+    """, [TAHUN, periode])
+
+    return con.execute("""
+        SELECT periode_id
+        FROM dim_periode
+        WHERE tahun = ? AND periode = ?
+    """, [TAHUN, periode]).fetchone()[0]
+
+
+def add_province(con, name):
+    con.execute("""
+        INSERT INTO dim_provinsi (provinsi_id, nama_provinsi)
+        VALUES (
+            (SELECT COALESCE(MAX(provinsi_id), 0) + 1
+             FROM dim_provinsi),
+            ?
+        )
+        ON CONFLICT (nama_provinsi) DO NOTHING
+    """, [name])
+
+    return con.execute("""
+        SELECT provinsi_id
+        FROM dim_provinsi
+        WHERE nama_provinsi = ?
+    """, [name]).fetchone()[0]
+
+
+def add_sector(con, code):
+    con.execute("""
+        INSERT INTO dim_sektor
+            (sektor_id, kode_sektor, nama_sektor)
+        VALUES (
+            (SELECT COALESCE(MAX(sektor_id), 0) + 1
+             FROM dim_sektor),
+            ?, ?
+        )
+        ON CONFLICT (kode_sektor) DO NOTHING
+    """, [code, code])
+
+    return con.execute("""
+        SELECT sektor_id
+        FROM dim_sektor
+        WHERE kode_sektor = ?
+    """, [code]).fetchone()[0]
+
+
+def insert_fact(con, table, columns, values):
+    col_sql = ", ".join(columns)
+    placeholders = ", ".join(["?"] * len(values))
+
+    con.execute(
+        f"INSERT INTO {table} ({col_sql}) VALUES ({placeholders})",
+        values,
+    )
 
 
 def load_data(con):
-    if not DATA_DIR.exists():
-        raise FileNotFoundError(f"Folder tidak ditemukan: {DATA_DIR}")
-
-    files = sorted(DATA_DIR.glob("*.xlsx"))
+    files = list(DATA_DIR.glob("*.xlsx"))
     if not files:
         raise FileNotFoundError(f"Tidak ada file Excel di {DATA_DIR}")
 
-    con.execute("DELETE FROM warehouse_load_log")
+    # TPAK
+    file_tpak = next(f for f in files if "TPAK" in f.name)
+    df = pd.read_excel(file_tpak)
+    df.columns = [str(c).strip() for c in df.columns]
 
-    for file in files:
-        excel = pd.ExcelFile(file)
+    for _, row in df.iterrows():
+        provinsi = clean_province(row["38 Provinsi"])
+        if provinsi is None:
+            continue
 
-        for sheet in excel.sheet_names:
-            df = pd.read_excel(file, sheet_name=sheet)
-            df.columns = clean_columns(df.columns)
+        pid = add_province(con, provinsi)
 
-            table = safe_name(file.stem + "_" + sheet)
-            view = "tmp_source_ekonomi"
-
-            con.register(view, df)
-
-            try:
-                con.execute(
-                    f'CREATE OR REPLACE TABLE "{table}" AS '
-                    f'SELECT * FROM "{view}"'
-                )
-            finally:
-                con.unregister(view)
-
-            con.execute(
-                """
-                INSERT INTO warehouse_load_log
-                (source_file, source_sheet, target_table, row_count)
-                VALUES (?, ?, ?, ?)
-                """,
-                [file.name, sheet, table, len(df)],
+        for periode in ["Februari", "Agustus"]:
+            period_id = add_period(con, periode)
+            insert_fact(
+                con, "fact_tpak",
+                ["provinsi_id", "periode_id", "nilai_tpak"],
+                [pid, period_id, clean_number(row[periode])],
             )
 
-            print(f"{table}: {len(df)} baris")
+    # TPT
+    file_tpt = next(f for f in files if "Pengangguran" in f.name)
+    df = pd.read_excel(file_tpt)
+    df.columns = [str(c).strip() for c in df.columns]
+
+    for _, row in df.iterrows():
+        provinsi = clean_province(row["38 Provinsi"])
+        if provinsi is None:
+            continue
+
+        pid = add_province(con, provinsi)
+
+        for periode in ["Februari", "Agustus"]:
+            period_id = add_period(con, periode)
+            insert_fact(
+                con, "fact_tpt",
+                ["provinsi_id", "periode_id", "nilai_tpt"],
+                [pid, period_id, clean_number(row[periode])],
+            )
+
+    # Upah rata-rata menurut sektor
+    file_upah = next(f for f in files if "Upah_Gaji" in f.name)
+    df = pd.read_excel(file_upah)
+    df.columns = [str(c).strip() for c in df.columns]
+
+    for _, row in df.iterrows():
+        sektor = str(row["17 sektor"]).strip()
+
+        # Baris rata-rata adalah agregat, bukan sektor.
+        if sektor.upper() == "RATA-RATA":
+            continue
+
+        sid = add_sector(con, sektor)
+
+        for periode in BULAN_PERIODE:
+            period_id = add_period(con, periode)
+            insert_fact(
+                con, "fact_upah_sektor",
+                ["sektor_id", "periode_id", "nilai_upah"],
+                [sid, period_id, clean_number(row[periode])],
+            )
+
+    # UMP
+    file_ump = next(f for f in files if "UMP" in f.name)
+    df = pd.read_excel(file_ump)
+    df.columns = [str(c).strip() for c in df.columns]
+
+    periode_id = add_period(con, "Tahunan")
+
+    for _, row in df.iterrows():
+        provinsi = clean_province(row["Provinsi di Indonesia"])
+        if provinsi is None:
+            continue
+
+        pid = add_province(con, provinsi)
+        insert_fact(
+            con, "fact_ump",
+            ["provinsi_id", "periode_id", "nilai_ump"],
+            [pid, periode_id, clean_number(row["2025"])],
+        )
+
+    print("Pemuatan data ekonomi selesai.")
+
+
+if __name__ == "__main__":
+    import duckdb
+
+    db = ROOT / "databases" / "ekonomi.duckdb"
+    con = duckdb.connect(str(db))
+
+    try:
+        con.execute("BEGIN TRANSACTION")
+        load_data(con)
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    finally:
+        con.close()

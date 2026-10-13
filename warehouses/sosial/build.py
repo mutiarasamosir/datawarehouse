@@ -16,20 +16,38 @@ def build():
 
     try:
         con.execute("BEGIN TRANSACTION")
+
+        # Hapus tabel warehouse lama agar build dapat diulang.
+        for table in [
+            "fact_pengeluaran_per_kapita",
+            "fact_penduduk",
+            "dim_wilayah",
+            "dim_periode",
+            "dim_provinsi",
+            "warehouse_load_log",
+        ]:
+            con.execute(f'DROP TABLE IF EXISTS "{table}"')
+
+        # Buat tabel sesuai skema baru.
         con.execute(SCHEMA_FILE.read_text(encoding="utf-8"))
+
+        # Muat data yang telah dibersihkan.
         load_data(con)
 
         print("\n=== VALIDASI SOSIAL ===")
-        logs = con.execute("""
-            SELECT source_file, target_table, row_count
-            FROM warehouse_load_log
-            ORDER BY source_file
-        """).fetchall()
 
-        for source_file, table, rows in logs:
-            print(f"{source_file} -> {table}: {rows} baris")
+        for table in [
+            "dim_provinsi",
+            "dim_wilayah",
+            "dim_periode",
+            "fact_penduduk",
+            "fact_pengeluaran_per_kapita",
+        ]:
+            count = con.execute(
+                f'SELECT COUNT(*) FROM "{table}"'
+            ).fetchone()[0]
+            print(f"{table}: {count} baris")
 
-        print("Jumlah dataset:", len(logs))
         con.execute("COMMIT")
         print(f"\nDatabase berhasil dibuat: {DB_FILE}")
 

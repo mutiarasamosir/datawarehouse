@@ -98,15 +98,14 @@ def process_and_load_inflasi(con, file_path):
 
     # Masukkan periode Januari–Desember 2025.
     con.executemany(
-        """
-        INSERT INTO dim_waktu (id_waktu, bulan, tahun)
-        VALUES (?, ?, ?)
-        """,
-        [
-            (202500 + bulan, bulan, 2025)
-            for bulan in range(1, 13)
-        ],
-    )
+    """
+    INSERT OR IGNORE INTO dim_waktu (id_waktu, bulan, tahun)
+    VALUES (?, ?, ?)
+    """,
+    [
+        (202500 + bulan, bulan, 2025)
+        for bulan in range(1, 13)
+    ],)
 
     # Buat pemetaan nama provinsi ke ID dimensi.
     id_provinsi = {

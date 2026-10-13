@@ -1,16 +1,16 @@
-
--- queries/04_inflasi_energi.sql
+-- Analisis inflasi energi per provinsi dan bulan
 
 SELECT
-    i.bulan,
-    i.provinsi_id,
-    i.nilai_inflasi,
-    e.*
-        EXCLUDE (bulan, provinsi_id)
-FROM inflasi.main.fact_inflasi AS i
-LEFT JOIN energi.main.fact_energi AS e
-    ON i.bulan = e.bulan
-   AND i.provinsi_id = e.provinsi_id
+    dp.provinsi,
+    db.tahun,
+    db.nomor_bulan AS bulan,
+    fe.nilai_inflasi
+FROM energi.main.fact_inflasi_energi AS fe
+JOIN energi.main.dim_provinsi AS dp
+    ON fe.provinsi_id = dp.provinsi_id
+JOIN energi.main.dim_bulan AS db
+    ON fe.bulan = db.bulan
 ORDER BY
-    i.bulan,
-    i.provinsi_id;
+    dp.provinsi,
+    db.tahun,
+    db.nomor_bulan;

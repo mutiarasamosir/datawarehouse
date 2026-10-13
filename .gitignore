@@ -1,3 +1,5 @@
+# Database hasil build
+databases/*.duckdb
 
 # Python
 __pycache__/

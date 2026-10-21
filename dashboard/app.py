@@ -41,6 +41,54 @@ MONTH_LABELS = {
     9: "Sep", 10: "Okt", 11: "Nov", 12: "Des",
 }
 
+
+# =========================================================
+# KOORDINAT PUSAT PROVINSI INDONESIA
+# Format: "NAMA PROVINSI": (latitude, longitude)
+# =========================================================
+
+PROVINCE_COORDS = {
+    "ACEH": (4.70, 96.75),
+    "SUMATERA UTARA": (2.12, 99.55),
+    "SUMATERA BARAT": (-0.74, 100.80),
+    "RIAU": (0.29, 101.71),
+    "KEPULAUAN RIAU": (3.95, 108.14),
+    "JAMBI": (-1.49, 102.44),
+    "SUMATERA SELATAN": (-3.32, 103.91),
+    "KEPULAUAN BANGKA BELITUNG": (-2.74, 106.44),
+    "BENGKULU": (-3.58, 102.35),
+    "LAMPUNG": (-4.56, 105.41),
+    "DKI JAKARTA": (-6.21, 106.85),
+    "JAWA BARAT": (-6.90, 107.57),
+    "BANTEN": (-6.41, 106.06),
+    "JAWA TENGAH": (-7.15, 110.14),
+    "DI YOGYAKARTA": (-7.80, 110.37),
+    "DAERAH ISTIMEWA YOGYAKARTA": (-7.80, 110.37),
+    "JAWA TIMUR": (-7.54, 112.24),
+    "BALI": (-8.41, 115.19),
+    "NUSA TENGGARA BARAT": (-8.65, 117.36),
+    "NUSA TENGGARA TIMUR": (-8.66, 121.08),
+    "KALIMANTAN BARAT": (-0.28, 111.48),
+    "KALIMANTAN TENGAH": (-1.68, 113.38),
+    "KALIMANTAN SELATAN": (-3.09, 115.28),
+    "KALIMANTAN TIMUR": (1.64, 116.42),
+    "KALIMANTAN UTARA": (2.88, 116.67),
+    "SULAWESI UTARA": (0.62, 123.98),
+    "GORONTALO": (0.70, 122.45),
+    "SULAWESI TENGAH": (-1.43, 121.45),
+    "SULAWESI BARAT": (-2.84, 119.23),
+    "SULAWESI SELATAN": (-3.67, 119.97),
+    "SULAWESI TENGGARA": (-4.14, 122.17),
+    "MALUKU": (-3.24, 130.15),
+    "MALUKU UTARA": (1.57, 127.81),
+    "PAPUA BARAT": (-1.34, 133.17),
+    "PAPUA BARAT DAYA": (-0.87, 131.25),
+    "PAPUA": (-4.27, 138.08),
+    "PAPUA SELATAN": (-7.00, 139.50),
+    "PAPUA TENGAH": (-3.90, 136.50),
+    "PAPUA PEGUNUNGAN": (-4.00, 139.00),
+}
+
 st.set_page_config(
     page_title="Dashboard Data Warehouse Indonesia",
     page_icon="🌿",
@@ -481,11 +529,12 @@ st.markdown(
 st.divider()
 
 
+
+
 # =========================================================
 # KPI CARDS
 # =========================================================
 inflation_col = find_column(f11, ["inflasi_umum"])
-food_col = find_column(f11, ["rata_rata_harga_pangan"])
 disaster_col = find_column(f11, ["jumlah_kejadian"])
 death_col = find_column(f11, ["korban_meninggal"])
 
@@ -493,97 +542,120 @@ avg_inflation = (
     pd.to_numeric(f11[inflation_col], errors="coerce").mean()
     if inflation_col and not f11.empty else float("nan")
 )
-avg_food = (
-    pd.to_numeric(f11[food_col], errors="coerce").mean()
-    if food_col and not f11.empty else float("nan")
-)
+
 total_disasters = (
     pd.to_numeric(f11[disaster_col], errors="coerce").sum()
     if disaster_col and not f11.empty else 0
 )
+
 total_deaths = (
     pd.to_numeric(f11[death_col], errors="coerce").sum()
     if death_col and not f11.empty else 0
 )
 
+# Data harga pangan berdasarkan filter tahun dan provinsi
+food_data = apply_filters(q02).copy()
+
+food_col = find_column(food_data, ["harga"])
+commodity_col = find_column(
+    food_data, ["nama_komoditas", "komoditas"]
+)
+
+if food_col and commodity_col and not food_data.empty:
+    food_data[food_col] = pd.to_numeric(
+        food_data[food_col], errors="coerce"
+    )
+
+    commodities = sorted(
+        food_data[commodity_col]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+else:
+    commodities = []
+
+# Empat KPI Cards
 k1, k2, k3, k4 = st.columns(4)
+
 k1.metric(
     "Rata-rata Inflasi",
-    f"{avg_inflation:.2f}%" if pd.notna(avg_inflation) else "N/A",
+    f"{avg_inflation:.2f}%"
+    if pd.notna(avg_inflation) else "N/A"
 )
-k2.metric(
-    "Rata-rata Harga Pangan",
-    f"Rp {avg_food:,.0f}" if pd.notna(avg_food) else "N/A",
+
+with k2:
+    st.markdown("**Rata-rata Harga Pangan**")
+
+    selected_food_kpi = st.selectbox(
+        "Pilih komoditas",
+        ["Semua Komoditas"] + commodities,
+        key="kpi_filter_komoditas",
+        label_visibility="collapsed"
+    )
+
+    filtered_food = food_data.copy()
+
+    if (
+        selected_food_kpi != "Semua Komoditas"
+        and commodity_col
+    ):
+        filtered_food = filtered_food[
+            filtered_food[commodity_col].astype(str)
+            == selected_food_kpi
+        ]
+
+    avg_food = (
+        filtered_food[food_col].mean()
+        if food_col and not filtered_food.empty
+        else float("nan")
+    )
+
+    st.metric(
+        label=" ",
+        value=(
+            f"Rp {avg_food:,.0f}"
+            if pd.notna(avg_food) else "N/A"
+        )
+    )
+
+k3.metric(
+    "Total Kejadian Bencana",
+    f"{total_disasters:,.0f}"
 )
-k3.metric("Total Kejadian Bencana", f"{total_disasters:,.0f}")
-k4.metric("Total Korban Meninggal", f"{total_deaths:,.0f}")
+
+k4.metric(
+    "Total Korban Meninggal",
+    f"{total_deaths:,.0f}"
+)
 
 st.markdown("")
 
 
-# =========================================================
-# VISUALISASI 1: DISTRIBUSI BENCANA PER PROVINSI
-# =========================================================
-# Koordinat perkiraan pusat provinsi untuk peta titik.
-# Titik menunjukkan agregasi tingkat provinsi, bukan lokasi kejadian persis.
-PROVINCE_COORDS = {
-    "ACEH": (4.6951, 96.7494),
-    "SUMATERA UTARA": (2.1154, 99.5451),
-    "SUMATERA BARAT": (-0.7399, 100.8000),
-    "RIAU": (0.2933, 101.7068),
-    "JAMBI": (-1.4852, 102.4381),
-    "SUMATERA SELATAN": (-3.3194, 103.9144),
-    "BENGKULU": (-3.8004, 102.2655),
-    "LAMPUNG": (-4.5586, 105.4068),
-    "KEPULAUAN BANGKA BELITUNG": (-2.7411, 106.4406),
-    "KEPULAUAN RIAU": (3.9457, 108.1429),
-    "DKI JAKARTA": (-6.2088, 106.8456),
-    "JAKARTA": (-6.2088, 106.8456),
-    "JAWA BARAT": (-6.9039, 107.6186),
-    "JAWA TENGAH": (-7.1500, 110.1403),
-    "DI YOGYAKARTA": (-7.7956, 110.3695),
-    "DAERAH ISTIMEWA YOGYAKARTA": (-7.7956, 110.3695),
-    "JAWA TIMUR": (-7.5361, 112.2384),
-    "BANTEN": (-6.4058, 106.0640),
-    "BALI": (-8.4095, 115.1889),
-    "NUSA TENGGARA BARAT": (-8.6529, 117.3616),
-    "NUSA TENGGARA TIMUR": (-8.6574, 121.0794),
-    "KALIMANTAN BARAT": (-0.2788, 111.4753),
-    "KALIMANTAN TENGAH": (-1.6815, 113.3824),
-    "KALIMANTAN SELATAN": (-3.0926, 115.2838),
-    "KALIMANTAN TIMUR": (0.5387, 116.4194),
-    "KALIMANTAN UTARA": (3.0731, 116.0414),
-    "SULAWESI UTARA": (0.6247, 123.9750),
-    "SULAWESI TENGAH": (-1.4300, 121.4456),
-    "SULAWESI SELATAN": (-3.6688, 119.9741),
-    "SULAWESI TENGGARA": (-4.1449, 122.1746),
-    "GORONTALO": (0.6999, 122.4467),
-    "SULAWESI BARAT": (-2.8441, 119.2321),
-    "MALUKU": (-3.2385, 130.1453),
-    "MALUKU UTARA": (1.5709, 127.8088),
-    "PAPUA": (-4.2699, 138.0804),
-    "PAPUA BARAT": (-1.3361, 133.1747),
-    "PAPUA BARAT DAYA": (-0.8667, 131.2500),
-    "PAPUA TENGAH": (-3.9000, 136.4000),
-    "PAPUA PEGUNUNGAN": (-4.1000, 139.5000),
-    "PAPUA SELATAN": (-7.0000, 139.5000),
-}
 
+
+# =========================================================
+# VISUALISASI 1: PERINGKAT SELURUH PROVINSI
+# =========================================================
 
 def render_disaster_ranking_chart():
-    """Grafik batang 15 provinsi, dengan indikator yang dapat dipilih."""
-    st.subheader("1. Peringkat 15 Provinsi Berdasarkan Indikator Bencana")
+    st.subheader("1. Indikator Bencana Seluruh Provinsi")
 
     if f05.empty:
         st.info("Data bencana tidak tersedia.")
         return
 
-    province_col = find_column(f05, ["nama_provinsi", "provinsi"])
+    province_col = find_column(
+        f05, ["nama_provinsi", "provinsi"]
+    )
+
     indicator_options = {
         "Jumlah Kejadian": "jumlah_kejadian",
         "Korban Meninggal": "korban_meninggal",
-        "Korban Luka": "korban_luka",
+        "Korban Terluka": "korban_luka",
     }
+
     available = {
         label: column
         for label, column in indicator_options.items()
@@ -593,6 +665,7 @@ def render_disaster_ranking_chart():
     if not province_col:
         st.warning("Kolom provinsi tidak ditemukan.")
         return
+
     if not available:
         st.warning("Kolom indikator bencana tidak ditemukan.")
         return
@@ -602,23 +675,30 @@ def render_disaster_ranking_chart():
         list(available.keys()),
         key="ranking_disaster_indicator",
     )
+
     value_col = available[selected_indicator]
 
     data = f05.copy()
-    data[value_col] = pd.to_numeric(data[value_col], errors="coerce")
-    data = data.dropna(subset=[province_col, value_col])
+    data[value_col] = pd.to_numeric(
+        data[value_col], errors="coerce"
+    )
 
+    data = data.dropna(
+        subset=[province_col, value_col]
+    )
+
+    # Jumlahkan nilai per provinsi
     summary = (
         data.groupby(province_col, as_index=False)[value_col]
         .sum(min_count=1)
-        .nlargest(15, value_col)
         .sort_values(value_col, ascending=True)
     )
 
     if summary.empty:
-        st.info("Tidak ada data valid untuk indikator yang dipilih.")
+        st.info("Tidak ada data valid untuk indikator ini.")
         return
 
+    # Grafik seluruh provinsi, bukan hanya 15 teratas
     fig = px.bar(
         summary,
         x=value_col,
@@ -627,24 +707,70 @@ def render_disaster_ranking_chart():
         color=value_col,
         text=value_col,
         color_continuous_scale=[
-            "#DCFCE7", "#86EFAC", "#22A447", "#14532D"
+            "#DCFCE7", "#86EFAC",
+            "#22A447", "#14532D"
         ],
         labels={
             province_col: "Provinsi",
             value_col: selected_indicator,
         },
-        title=f"15 Provinsi Berdasarkan {selected_indicator}",
+        title=f"{selected_indicator} di Seluruh Provinsi",
     )
+
     fig.update_traces(
         texttemplate="%{x:,.0f}",
         textposition="outside",
         cliponaxis=False,
     )
-    fig.update_layout(coloraxis_colorbar_title=selected_indicator)
-    st.plotly_chart(green_layout(fig, 520), use_container_width=True)
+
+    # Tinggi grafik menyesuaikan jumlah provinsi
+    chart_height = max(650, len(summary) * 35)
+
+    fig.update_layout(
+        coloraxis_showscale=False,
+        height=chart_height,
+        margin=dict(l=30, r=50, t=65, b=45),
+        yaxis=dict(
+            title="Provinsi",
+            automargin=True,
+            tickfont=dict(size=10),
+        ),
+        xaxis=dict(
+            title=selected_indicator,
+            rangemode="tozero",
+        ),
+    )
+
+    # Buat area scroll dengan tinggi tetap
+    import streamlit.components.v1 as components
+
+    chart_html = fig.to_html(
+        full_html=False,
+        include_plotlyjs="cdn",
+        config={"responsive": True},
+    )
+
+    components.html(
+        f"""
+        <div style="
+            height: 650px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            border: 1px solid #DCEFE0;
+            border-radius: 14px;
+            background: white;
+        ">
+            {chart_html}
+        </div>
+        """,
+        height=670,
+        scrolling=False,
+    )
+
     st.caption(
-        f"Menampilkan 15 provinsi dengan nilai tertinggi untuk "
-        f"indikator {selected_indicator.lower()}."
+        f"Menampilkan seluruh {len(summary)} provinsi "
+        f"yang memiliki data valid untuk indikator "
+        f"{selected_indicator.lower()}."
     )
 
 
@@ -1174,7 +1300,6 @@ with right:
 
 
 
-
 # =========================================================
 # VISUALISASI 7: PETA BENCANA BERDASARKAN KATEGORI
 # Visualisasi ini terpisah dari grafik peringkat provinsi di atas.
@@ -1415,6 +1540,428 @@ def render_category_disaster_map():
 st.divider()
 render_category_disaster_map()
 
+
+# =========================================================
+# PETA INFLASI UMUM PER PROVINSI DAN BULAN
+# =========================================================
+
+def render_inflation_map():
+    st.subheader("Peta Inflasi Umum per Provinsi")
+    st.write(
+        "Pilih tahun dan bulan untuk melihat distribusi "
+        "inflasi umum di seluruh provinsi Indonesia."
+    )
+
+    if q01.empty:
+        st.info("Data inflasi tidak tersedia.")
+        return
+
+    data = q01.copy()
+
+    # Identifikasi kolom
+    province_col = find_column(
+        data, ["nama_provinsi", "provinsi"]
+    )
+    inflation_col = find_column(
+        data, ["inflasi_umum"]
+    )
+
+    if not province_col or not inflation_col:
+        st.warning(
+            "Kolom provinsi atau inflasi_umum tidak ditemukan "
+            "pada query 01_inflasi_bulanan.sql."
+        )
+        return
+
+    # Terapkan filter tahun dari sidebar
+    if selected_year != "Semua":
+        data = data[
+            pd.to_numeric(data["_year"], errors="coerce")
+            == int(selected_year)
+        ]
+
+    if data.empty:
+        st.info("Tidak ada data inflasi untuk tahun ini.")
+        return
+
+    # Filter bulan
+    month_options = sorted(
+        data["_month"].dropna().astype(int).unique().tolist()
+    )
+
+    month_labels = {
+        month: MONTH_LABELS[month]
+        for month in month_options
+        if month in MONTH_LABELS
+    }
+
+    selected_month = st.selectbox(
+        "Pilih Bulan Inflasi",
+        options=list(month_labels.keys()),
+        format_func=lambda month: month_labels[month],
+        key="inflation_map_month",
+    )
+
+    # Filter data sesuai bulan terpilih
+    data = data[
+        pd.to_numeric(data["_month"], errors="coerce")
+        == selected_month
+    ].copy()
+
+    data[inflation_col] = pd.to_numeric(
+        data[inflation_col], errors="coerce"
+    )
+
+    # Normalisasi nama provinsi
+    data["_province_key"] = (
+        data[province_col]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+
+    # Gabungkan jika terdapat lebih dari satu baris
+    # untuk provinsi dan bulan yang sama
+    summary = (
+        data.groupby("_province_key", as_index=False)
+        [inflation_col]
+        .mean()
+    )
+
+    # Koordinat pusat provinsi dari PROVINCE_COORDS
+    summary["Latitude"] = summary["_province_key"].map(
+        lambda name: PROVINCE_COORDS.get(
+            name, (None, None)
+        )[0]
+    )
+
+    summary["Longitude"] = summary["_province_key"].map(
+        lambda name: PROVINCE_COORDS.get(
+            name, (None, None)
+        )[1]
+    )
+
+    summary = summary.dropna(
+        subset=[
+            inflation_col,
+            "Latitude",
+            "Longitude",
+        ]
+    )
+
+    if summary.empty:
+        st.warning(
+            "Tidak ada data koordinat yang cocok dengan "
+            "nama provinsi pada data inflasi."
+        )
+        return
+
+    # Peta Indonesia dengan warna sesuai nilai inflasi
+    fig = px.scatter_geo(
+        summary,
+        lat="Latitude",
+        lon="Longitude",
+        color=inflation_col,
+        hover_name="_province_key",
+        hover_data={
+            inflation_col: ":.2f",
+            "Latitude": False,
+            "Longitude": False,
+        },
+        color_continuous_scale=[
+            "#DCFCE7",
+            "#86EFAC",
+            "#22A447",
+            "#14532D",
+        ],
+        size_max=22,
+        projection="natural earth",
+        title=f"Inflasi Umum per Provinsi - {month_labels[selected_month]}",
+        labels={
+            inflation_col: "Inflasi Umum (%)",
+            "_province_key": "Provinsi",
+        },
+    )
+
+    fig.update_traces(
+        marker=dict(size=14, line=dict(width=0.8, color="white"))
+    )
+
+    fig.update_geos(
+        scope="asia",
+        center={"lat": -2.5, "lon": 118},
+        lataxis_range=[-12, 8],
+        lonaxis_range=[94, 142],
+        showcountries=True,
+        countrycolor="#9BBDA3",
+        showland=True,
+        landcolor="#E8F5E9",
+        showocean=True,
+        oceancolor="#F2FAF4",
+        showcoastlines=True,
+        coastlinecolor="#A5C9AC",
+        bgcolor="#FFFFFF",
+    )
+
+    fig.update_layout(
+        height=550,
+        coloraxis_colorbar=dict(
+            title="Inflasi (%)"
+        ),
+    )
+
+    st.plotly_chart(
+        green_layout(fig, 550),
+        use_container_width=True,
+    )
+
+    st.caption(
+        "Warna menunjukkan nilai inflasi umum. "
+        "Titik mewakili perkiraan pusat provinsi, "
+        "bukan batas wilayah administratif."
+    )
+
+
+# =========================================================
+# VISUALISASI: PETA INFLASI UMUM PER PROVINSI DAN BULAN
+# =========================================================
+
+def render_inflation_map():
+    st.subheader("8. Peta Inflasi Umum per Provinsi")
+
+    st.caption(
+        "Distribusi inflasi umum berdasarkan provinsi dan "
+        "bulan yang dipilih."
+    )
+
+    # 1. Validasi data
+    if q01.empty:
+        st.info("Data inflasi tidak tersedia.")
+        return
+
+    data = q01.copy()
+
+    province_col = find_column(
+        data, ["nama_provinsi", "provinsi"]
+    )
+    inflation_col = find_column(
+        data, ["inflasi_umum"]
+    )
+
+    required_cols = ["_year", "_month"]
+
+    if not province_col or not inflation_col:
+        st.warning(
+            "Kolom provinsi atau inflasi_umum tidak ditemukan "
+            "pada data q01."
+        )
+        return
+
+    missing_cols = [
+        col for col in required_cols if col not in data.columns
+    ]
+
+    if missing_cols:
+        st.warning(
+            f"Kolom periode tidak ditemukan: {missing_cols}. "
+            "Pastikan data sudah diproses oleh prepare_month()."
+        )
+        return
+
+    # 2. Normalisasi tipe data
+    data["_year"] = pd.to_numeric(
+        data["_year"], errors="coerce"
+    )
+    data["_month"] = pd.to_numeric(
+        data["_month"], errors="coerce"
+    )
+    data[inflation_col] = pd.to_numeric(
+        data[inflation_col], errors="coerce"
+    )
+
+    data = data.dropna(
+        subset=[
+            province_col,
+            "_year",
+            "_month",
+            inflation_col,
+        ]
+    )
+
+    if data.empty:
+        st.info("Tidak ada data inflasi yang valid.")
+        return
+
+    # 3. Filter tahun
+    years = sorted(data["_year"].astype(int).unique())
+
+    year_options = ["Semua"] + years
+
+    map_year = st.selectbox(
+        "Pilih Tahun",
+        options=year_options,
+        index=(
+            year_options.index(selected_year)
+            if selected_year in year_options
+            else 0
+        ),
+        key="inflation_map_year",
+    )
+
+    if map_year != "Semua":
+        data = data[data["_year"] == int(map_year)]
+
+    # 4. Filter bulan
+    month_options = sorted(
+        data["_month"].astype(int).unique().tolist()
+    )
+
+    month_labels = {
+        month: MONTH_LABELS.get(month, f"Bulan {month}")
+        for month in month_options
+        if 1 <= month <= 12
+    }
+
+    if not month_labels:
+        st.info("Tidak ada data bulan yang tersedia.")
+        return
+
+    selected_month = st.selectbox(
+        "Pilih Bulan",
+        options=list(month_labels.keys()),
+        format_func=lambda month: month_labels[month],
+        key="inflation_map_month",
+    )
+
+    data = data[
+        data["_month"] == selected_month
+    ].copy()
+
+    # 5. Standarisasi nama provinsi
+    data["_province_key"] = (
+        data[province_col]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+
+    # 6. Agregasi inflasi per provinsi
+    summary = (
+        data.groupby("_province_key", as_index=False)
+        .agg(
+            inflasi=(inflation_col, "mean")
+        )
+    )
+
+    # 7. Ambil koordinat dari PROVINCE_COORDS
+    # Format: {"NAMA PROVINSI": (latitude, longitude)}
+    if "PROVINCE_COORDS" not in globals():
+        st.error(
+            "PROVINCE_COORDS belum didefinisikan. "
+            "Gunakan kamus koordinat provinsi yang sudah "
+            "ada pada kode visualisasi bencana."
+        )
+        return
+
+    summary["Latitude"] = summary["_province_key"].map(
+        lambda name: PROVINCE_COORDS.get(
+            name, (None, None)
+        )[0]
+    )
+
+    summary["Longitude"] = summary["_province_key"].map(
+        lambda name: PROVINCE_COORDS.get(
+            name, (None, None)
+        )[1]
+    )
+
+    summary = summary.dropna(
+        subset=["Latitude", "Longitude", "inflasi"]
+    )
+
+    if summary.empty:
+        st.warning(
+            "Tidak ada provinsi yang cocok dengan koordinat. "
+            "Periksa penulisan nama provinsi."
+        )
+        return
+
+    # 8. Buat peta titik inflasi
+    fig = px.scatter_geo(
+        summary,
+        lat="Latitude",
+        lon="Longitude",
+        color="inflasi",
+        hover_name="_province_key",
+        hover_data={
+            "inflasi": ":.2f",
+            "Latitude": False,
+            "Longitude": False,
+        },
+        color_continuous_scale=[
+            "#DCFCE7",
+            "#86EFAC",
+            "#22A447",
+            "#14532D",
+        ],
+        projection="natural earth",
+        title=(
+            f"Inflasi Umum per Provinsi - "
+            f"{month_labels[selected_month]} "
+            f"{map_year if map_year != 'Semua' else ''}"
+        ),
+        labels={
+            "inflasi": "Inflasi Umum (%)",
+            "_province_key": "Provinsi",
+        },
+    )
+
+    fig.update_traces(
+        marker=dict(
+            size=13,
+            opacity=0.9,
+            line=dict(width=0.8, color="white"),
+        )
+    )
+
+    fig.update_geos(
+        scope="asia",
+        center=dict(lat=-2.5, lon=118),
+        lataxis_range=[-12, 8],
+        lonaxis_range=[94, 142],
+        showcountries=True,
+        countrycolor="#9BBDA3",
+        showland=True,
+        landcolor="#E8F5E9",
+        showocean=True,
+        oceancolor="#F2FAF4",
+        showcoastlines=True,
+        coastlinecolor="#A5C9AC",
+        bgcolor="white",
+    )
+
+    fig.update_layout(
+        height=550,
+        coloraxis_colorbar=dict(
+            title="Inflasi (%)"
+        ),
+    )
+
+    st.plotly_chart(
+        green_layout(fig, 550),
+        use_container_width=True,
+    )
+
+    st.caption(
+        f"Menampilkan {len(summary)} provinsi yang memiliki "
+        f"data dan koordinat valid. Titik menunjukkan "
+        f"perkiraan pusat provinsi, bukan batas wilayah."
+    )
+
+
+# Tampilkan peta
+st.divider()
+render_inflation_map()
 
 # =========================================================
 # TABEL DATA TERINTEGRASI + DOWNLOAD CSV

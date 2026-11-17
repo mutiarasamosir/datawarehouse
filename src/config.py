@@ -11,4 +11,5 @@ DATABASES = {
     "ekonomi": DATABASE_DIR / "ekonomi.duckdb",
     "sosial": DATABASE_DIR / "sosial.duckdb",
     "bencana": DATABASE_DIR / "bencana.duckdb",
+    "ihk": DATABASE_DIR / "ihk.duckdb",
 }

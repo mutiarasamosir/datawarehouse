@@ -5,10 +5,53 @@ import duckdb
 from load import load_data
 
 
+# ==================================================
+# KONFIGURASI PATH
+# ==================================================
+
 ROOT = Path(__file__).resolve().parents[2]
+
 DB_FILE = ROOT / "databases" / "ekonomi.duckdb"
 SCHEMA_FILE = ROOT / "warehouses" / "ekonomi" / "schema.sql"
 
+OUTPUT_DIR = ROOT / "data" / "ekonomi" / "parquet"
+
+
+# ==================================================
+# EKSPOR TABEL KE PARQUET
+# ==================================================
+
+def export_parquet(con):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    tables = [
+        "dim_provinsi",
+        "dim_periode",
+        "dim_sektor",
+        "fact_tpak",
+        "fact_tpt",
+        "fact_upah_sektor",
+        "fact_ump",
+    ]
+
+    print("\n=== EKSPOR PARQUET EKONOMI ===")
+
+    for table in tables:
+        output_file = OUTPUT_DIR / f"{table}.parquet"
+        output_path = output_file.as_posix().replace("'", "''")
+
+        con.execute(f"""
+            COPY "{table}"
+            TO '{output_path}'
+            (FORMAT PARQUET);
+        """)
+
+        print(f"Berhasil: {output_file}")
+
+
+# ==================================================
+# BUILD DATA WAREHOUSE EKONOMI
+# ==================================================
 
 def build():
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -18,7 +61,7 @@ def build():
     try:
         con.execute("BEGIN TRANSACTION")
 
-        # Bersihkan tabel lama agar build dapat diulang.
+        # Hapus tabel lama agar build dapat diulang.
         for table in [
             "fact_tpak",
             "fact_tpt",
@@ -37,9 +80,10 @@ def build():
         # Muat dan transformasikan data.
         load_data(con)
 
+        # Validasi jumlah baris.
         print("\n=== VALIDASI EKONOMI ===")
 
-        for table in [
+        tables = [
             "dim_provinsi",
             "dim_periode",
             "dim_sektor",
@@ -47,14 +91,24 @@ def build():
             "fact_tpt",
             "fact_upah_sektor",
             "fact_ump",
-        ]:
+        ]
+
+        for table in tables:
             count = con.execute(
                 f'SELECT COUNT(*) FROM "{table}"'
             ).fetchone()[0]
+
             print(f"{table}: {count} baris")
 
+        # Simpan transaksi database.
         con.execute("COMMIT")
+
         print(f"\nDatabase berhasil dibuat: {DB_FILE}")
+
+        # Ekspor tabel ke Parquet.
+        export_parquet(con)
+
+        print("\nBUILD EKONOMI SELESAI!")
 
     except Exception:
         con.execute("ROLLBACK")

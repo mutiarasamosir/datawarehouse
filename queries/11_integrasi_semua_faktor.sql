@@ -1,181 +1,244 @@
+-- =========================================================
+-- QUERY 11: INTEGRASI SEMUA FAKTOR INFLASI
+-- Domain: Inflasi, Pangan, Bencana, IHK, Ekonomi, Sosial
+-- Grain: Satu baris per provinsi per bulan
+-- Output: analytics.main.hasil_integrasi
+-- =========================================================
+CREATE OR REPLACE TABLE analytics.main.hasil_integrasi AS
 
--- Integrasi inflasi umum dengan faktor pangan, energi, bencana, ekonomi, dan sosial.
--- Grain: satu baris per provinsi per bulan.
+WITH
 
-WITH pangan_bulanan AS (
+-- =========================================================
+-- 1. DATA PANGAN BULANAN
+-- =========================================================
+pangan_bulanan AS (
     SELECT
-        UPPER(TRIM(dp.provinsi)) AS provinsi,
-        YEAR(fp.bulan) AS tahun,
-        MONTH(fp.bulan) AS bulan,
+        UPPER(TRIM(dp.provinsi)) AS provinsi_key,
+        YEAR(db.bulan) AS tahun,
+        MONTH(db.bulan) AS bulan,
         AVG(fp.harga) AS rata_rata_harga_pangan
-    FROM pangan.main.fact_harga_pangan AS fp
-    JOIN pangan.main.dim_provinsi AS dp
+
+    FROM pangan.main.fact_harga_pangan fp
+
+    JOIN pangan.main.dim_provinsi dp
         ON fp.provinsi_id = dp.provinsi_id
+
+    JOIN pangan.main.dim_bulan db
+        ON fp.bulan = db.bulan
+
     GROUP BY
         UPPER(TRIM(dp.provinsi)),
-        YEAR(fp.bulan),
-        MONTH(fp.bulan)
+        YEAR(db.bulan),
+        MONTH(db.bulan)
 ),
 
-energi_bulanan AS (
-    SELECT
-        UPPER(TRIM(dp.provinsi)) AS provinsi,
-        db.tahun,
-        db.nomor_bulan AS bulan,
-        AVG(fe.nilai_inflasi) AS inflasi_energi
-    FROM energi.main.fact_inflasi_energi AS fe
-    JOIN energi.main.dim_provinsi AS dp
-        ON fe.provinsi_id = dp.provinsi_id
-    JOIN energi.main.dim_bulan AS db
-        ON fe.bulan = db.bulan
-    GROUP BY
-        UPPER(TRIM(dp.provinsi)),
-        db.tahun,
-        db.nomor_bulan
-),
-
+-- =========================================================
+-- 2. DATA BENCANA BULANAN
+-- =========================================================
 bencana_bulanan AS (
     SELECT
-        UPPER(TRIM(dp.provinsi)) AS provinsi,
-        db.tahun,
-        db.nomor_bulan AS bulan,
-        SUM(COALESCE(fb.jumlah_kejadian, 0)) AS jumlah_kejadian,
-        SUM(COALESCE(fb.korban_meninggal, 0)) AS korban_meninggal,
-        SUM(COALESCE(fb.korban_luka, 0)) AS korban_luka
-    FROM bencana.main.fact_bencana AS fb
-    JOIN bencana.main.dim_provinsi AS dp
+        UPPER(TRIM(dp.provinsi)) AS provinsi_key,
+        YEAR(db.bulan) AS tahun,
+        MONTH(db.bulan) AS bulan,
+
+        SUM(fb.jumlah_kejadian) AS jumlah_kejadian,
+        SUM(fb.korban_meninggal) AS korban_meninggal,
+        SUM(fb.korban_luka) AS korban_luka
+
+    FROM bencana.main.fact_bencana fb
+
+    JOIN bencana.main.dim_provinsi dp
         ON fb.provinsi_id = dp.provinsi_id
-    JOIN bencana.main.dim_bulan AS db
+
+    JOIN bencana.main.dim_bulan db
         ON fb.bulan = db.bulan
+
     GROUP BY
         UPPER(TRIM(dp.provinsi)),
+        YEAR(db.bulan),
+        MONTH(db.bulan)
+),
+
+-- =========================================================
+-- 3. DATA IHK BULANAN
+-- =========================================================
+ihk_bulanan AS (
+    SELECT
+        ihk.provinsi_id,
+        db.tahun,
+        db.nomor_bulan AS bulan,
+        AVG(ihk.nilai_ihk) AS nilai_ihk
+
+    FROM ihk_db.main.fact_ihk ihk
+
+    JOIN ihk_db.main.dim_bulan db
+        ON ihk.bulan = db.bulan
+
+    GROUP BY
+        ihk.provinsi_id,
         db.tahun,
         db.nomor_bulan
 ),
 
+-- =========================================================
+-- 4. DATA EKONOMI
+-- TPT dan TPAK tersedia pada Februari dan Agustus.
+-- UMP merupakan indikator tahunan.
+-- =========================================================
 ekonomi_tahunan AS (
     SELECT
-        UPPER(TRIM(dp.nama_provinsi)) AS provinsi,
+        UPPER(TRIM(dp.nama_provinsi)) AS provinsi_key,
         dper.tahun,
+
+        MAX(
+            CASE
+                WHEN LOWER(dper.periode) LIKE '%feb%'
+                THEN tpt.nilai_tpt
+            END
+        ) AS nilai_tpt_februari,
+
+        MAX(
+            CASE
+                WHEN LOWER(dper.periode) LIKE '%agu%'
+                THEN tpt.nilai_tpt
+            END
+        ) AS nilai_tpt_agustus,
+
+        MAX(
+            CASE
+                WHEN LOWER(dper.periode) LIKE '%feb%'
+                THEN tpak.nilai_tpak
+            END
+        ) AS nilai_tpak_februari,
+
+        MAX(
+            CASE
+                WHEN LOWER(dper.periode) LIKE '%agu%'
+                THEN tpak.nilai_tpak
+            END
+        ) AS nilai_tpak_agustus,
+
         MAX(ump.nilai_ump) AS nilai_ump
-    FROM ekonomi.main.dim_provinsi AS dp
-    JOIN ekonomi.main.fact_ump AS ump
+
+    FROM ekonomi.main.dim_provinsi dp
+
+    JOIN ekonomi.main.fact_tpt tpt
+        ON dp.provinsi_id = tpt.provinsi_id
+
+    JOIN ekonomi.main.dim_periode dper
+        ON tpt.periode_id = dper.periode_id
+
+    LEFT JOIN ekonomi.main.fact_tpak tpak
+        ON dp.provinsi_id = tpak.provinsi_id
+        AND dper.periode_id = tpak.periode_id
+
+    LEFT JOIN ekonomi.main.fact_ump ump
         ON dp.provinsi_id = ump.provinsi_id
-    JOIN ekonomi.main.dim_periode AS dper
-        ON ump.periode_id = dper.periode_id
+        AND dper.tahun = (
+            SELECT dper_ump.tahun
+            FROM ekonomi.main.dim_periode dper_ump
+            WHERE dper_ump.periode_id = ump.periode_id
+        )
+
     GROUP BY
         UPPER(TRIM(dp.nama_provinsi)),
         dper.tahun
 ),
 
+-- =========================================================
+-- 5. DATA SOSIAL TAHUNAN
+-- =========================================================
 sosial_tahunan AS (
     SELECT
-        UPPER(TRIM(dp.nama_provinsi)) AS provinsi,
+        UPPER(TRIM(dp.nama_provinsi)) AS provinsi_key,
         dper.tahun,
-        MAX(fp.jumlah_penduduk_ribu) AS jumlah_penduduk_ribu,
-        MAX(fp.laju_pertumbuhan) AS laju_pertumbuhan,
-        MAX(fp.kepadatan_penduduk) AS kepadatan_penduduk
-    FROM sosial.main.fact_penduduk AS fp
-    JOIN sosial.main.dim_provinsi AS dp
-        ON fp.provinsi_id = dp.provinsi_id
-    JOIN sosial.main.dim_periode AS dper
-        ON fp.periode_id = dper.periode_id
+
+        AVG(fs.jumlah_penduduk_ribu) AS jumlah_penduduk_ribu,
+        AVG(fs.laju_pertumbuhan) AS laju_pertumbuhan,
+        AVG(fs.kepadatan_penduduk) AS kepadatan_penduduk
+
+    FROM sosial.main.fact_penduduk fs
+
+    JOIN sosial.main.dim_provinsi dp
+        ON fs.provinsi_id = dp.provinsi_id
+
+    JOIN sosial.main.dim_periode dper
+        ON fs.periode_id = dper.periode_id
+
     GROUP BY
         UPPER(TRIM(dp.nama_provinsi)),
         dper.tahun
 )
 
+-- =========================================================
+-- 6. INTEGRASI SELURUH DATA
+-- =========================================================
 SELECT
+    dw.id_provinsi,
     dw.nama_provinsi,
+
     dt.tahun,
     dt.bulan,
+
+    -- Variabel utama
     fi.inflasi_umum,
 
-    pb.rata_rata_harga_pangan,
-    eb.inflasi_energi,
+    -- Variabel pangan
+    p.rata_rata_harga_pangan,
 
-    COALESCE(bb.jumlah_kejadian, 0) AS jumlah_kejadian,
-    COALESCE(bb.korban_meninggal, 0) AS korban_meninggal,
-    COALESCE(bb.korban_luka, 0) AS korban_luka,
+    -- Variabel bencana
+    b.jumlah_kejadian,
+    b.korban_meninggal,
+    b.korban_luka,
 
+    -- Variabel IHK
+    i.nilai_ihk,
+
+    -- Variabel ekonomi
     CASE
-        WHEN dt.bulan = 2 THEN tpt.nilai_tpt
-        WHEN dt.bulan = 8 THEN tpt.nilai_tpt
-        ELSE NULL
+        WHEN dt.bulan = 2 THEN e.nilai_tpt_februari
+        WHEN dt.bulan = 8 THEN e.nilai_tpt_agustus
     END AS nilai_tpt,
 
     CASE
-        WHEN dt.bulan = 2 THEN tpak.nilai_tpak
-        WHEN dt.bulan = 8 THEN tpak.nilai_tpak
-        ELSE NULL
+        WHEN dt.bulan = 2 THEN e.nilai_tpak_februari
+        WHEN dt.bulan = 8 THEN e.nilai_tpak_agustus
     END AS nilai_tpak,
 
-    et.nilai_ump,
+    e.nilai_ump,
 
-    st.jumlah_penduduk_ribu,
-    st.laju_pertumbuhan,
-    st.kepadatan_penduduk
+    -- Variabel sosial
+    s.jumlah_penduduk_ribu,
+    s.laju_pertumbuhan,
+    s.kepadatan_penduduk
 
-FROM inflasi.main.fact_inflasi AS fi
+FROM inflasi.main.fact_inflasi fi
 
-JOIN inflasi.main.dim_wilayah AS dw
+JOIN inflasi.main.dim_wilayah dw
     ON fi.id_provinsi = dw.id_provinsi
 
-JOIN inflasi.main.dim_waktu AS dt
+JOIN inflasi.main.dim_waktu dt
     ON fi.id_waktu = dt.id_waktu
 
-LEFT JOIN pangan_bulanan AS pb
-    ON UPPER(TRIM(dw.nama_provinsi)) = pb.provinsi
-    AND dt.tahun = pb.tahun
-    AND dt.bulan = pb.bulan
+LEFT JOIN pangan_bulanan p
+    ON UPPER(TRIM(dw.nama_provinsi)) = p.provinsi_key
+    AND dt.tahun = p.tahun
+    AND dt.bulan = p.bulan
 
-LEFT JOIN energi_bulanan AS eb
-    ON UPPER(TRIM(dw.nama_provinsi)) = eb.provinsi
-    AND dt.tahun = eb.tahun
-    AND dt.bulan = eb.bulan
+LEFT JOIN bencana_bulanan b
+    ON UPPER(TRIM(dw.nama_provinsi)) = b.provinsi_key
+    AND dt.tahun = b.tahun
+    AND dt.bulan = b.bulan
 
-LEFT JOIN bencana_bulanan AS bb
-    ON UPPER(TRIM(dw.nama_provinsi)) = bb.provinsi
-    AND dt.tahun = bb.tahun
-    AND dt.bulan = bb.bulan
+LEFT JOIN ihk_bulanan i
+    ON fi.id_provinsi = i.provinsi_id
+    AND dt.tahun = i.tahun
+    AND dt.bulan = i.bulan
 
-LEFT JOIN ekonomi_tahunan AS et
-    ON UPPER(TRIM(dw.nama_provinsi)) = et.provinsi
-    AND dt.tahun = et.tahun
+LEFT JOIN ekonomi_tahunan e
+    ON UPPER(TRIM(dw.nama_provinsi)) = e.provinsi_key
+    AND dt.tahun = e.tahun
 
-LEFT JOIN sosial_tahunan AS st
-    ON UPPER(TRIM(dw.nama_provinsi)) = st.provinsi
-    AND dt.tahun = st.tahun
-
-LEFT JOIN ekonomi.main.dim_provinsi AS dep
-    ON UPPER(TRIM(dw.nama_provinsi)) =
-       UPPER(TRIM(dep.nama_provinsi))
-
-LEFT JOIN ekonomi.main.dim_periode AS dpe_feb
-    ON dpe_feb.tahun = dt.tahun
-    AND dpe_feb.periode = 'Februari'
-
-LEFT JOIN ekonomi.main.dim_periode AS dpe_aug
-    ON dpe_aug.tahun = dt.tahun
-    AND dpe_aug.periode = 'Agustus'
-
-LEFT JOIN ekonomi.main.fact_tpt AS tpt
-    ON tpt.provinsi_id = dep.provinsi_id
-    AND tpt.periode_id = CASE
-        WHEN dt.bulan = 2 THEN dpe_feb.periode_id
-        WHEN dt.bulan = 8 THEN dpe_aug.periode_id
-        ELSE NULL
-    END
-
-LEFT JOIN ekonomi.main.fact_tpak AS tpak
-    ON tpak.provinsi_id = dep.provinsi_id
-    AND tpak.periode_id = CASE
-        WHEN dt.bulan = 2 THEN dpe_feb.periode_id
-        WHEN dt.bulan = 8 THEN dpe_aug.periode_id
-        ELSE NULL
-    END
-
-ORDER BY
-    dw.nama_provinsi,
-    dt.tahun,
-    dt.bulan;
+LEFT JOIN sosial_tahunan s
+    ON UPPER(TRIM(dw.nama_provinsi)) = s.provinsi_key
+    AND dt.tahun = s.tahun;

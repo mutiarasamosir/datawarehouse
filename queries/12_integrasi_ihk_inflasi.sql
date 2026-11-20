@@ -1,5 +1,3 @@
-ATTACH 'databases/ihk.duckdb' AS ihk_db;
-
 SELECT
     dw.nama_provinsi,
     dt.bulan,

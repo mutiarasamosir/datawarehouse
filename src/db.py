@@ -1,25 +1,34 @@
-# Membuka koneksi DuckDB dan menghubungkan seluruh database domain yang tersedia.
+
+# Koneksi DuckDB:
+# analytics menjadi database utama (READ-WRITE).
+# Seluruh database domain menjadi sumber (READ-ONLY).
 
 import duckdb
 
 from src.config import DATABASES
 
+
 def get_connection():
-    main_db = DATABASES["inflasi"]
 
-    if not main_db.exists():
-        raise FileNotFoundError(
-            f"Database utama tidak ditemukan: {main_db}"
-        )
+    analytics_db = DATABASES["analytics"]
 
-    con = duckdb.connect(
-        str(main_db),
-        read_only=True,
-    )
+    # Pastikan folder database tersedia.
+    analytics_db.parent.mkdir(parents=True, exist_ok=True)
+
+    # Buat file analytics jika belum tersedia.
+    if not analytics_db.exists():
+        temp_con = duckdb.connect(str(analytics_db))
+        temp_con.close()
+
+    # PENTING:
+    # Analytics menjadi database utama dan bisa ditulis.
+    con = duckdb.connect(str(analytics_db))
 
     try:
+        # Attach seluruh database sumber sebagai READ-ONLY.
         for alias, path in DATABASES.items():
-            if alias == "inflasi":
+
+            if alias == "analytics":
                 continue
 
             if not path.exists():
@@ -30,8 +39,7 @@ def get_connection():
             escaped_path = path.as_posix().replace("'", "''")
 
             con.execute(
-                f"ATTACH '{escaped_path}' AS {alias} "
-                "(READ_ONLY)"
+                f"ATTACH '{escaped_path}' AS {alias} (READ_ONLY)"
             )
 
         return con

@@ -1,7 +1,7 @@
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-
 DATABASE_DIR = ROOT / "databases"
 
 DATABASES = {
@@ -11,5 +11,6 @@ DATABASES = {
     "ekonomi": DATABASE_DIR / "ekonomi.duckdb",
     "sosial": DATABASE_DIR / "sosial.duckdb",
     "bencana": DATABASE_DIR / "bencana.duckdb",
-    "ihk": DATABASE_DIR / "ihk.duckdb",
+    "ihk_db": DATABASE_DIR / "ihk.duckdb",
+    "analytics": DATABASE_DIR / "analytics.duckdb",
 }
